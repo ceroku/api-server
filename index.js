@@ -107,7 +107,7 @@ app.post('/apps/:app_name/builds', function(req, res, next) {
 
   // Return response to user first
   res.json({
-    output_stream_url: `http://api.concerto/apps/${req.params.app_name}/builds/${build_id}/logs`
+    output_stream_url: `${process.env.DOMAIN}/apps/${req.params.app_name}/builds/${build_id}/logs`
   });
 
   // Background work
