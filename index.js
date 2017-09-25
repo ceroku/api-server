@@ -138,18 +138,28 @@ app.post('/apps/:app_name/builds', function(req, res, next) {
     // Do not do docker.run here, since docker.run calls container.wait();
     return docker.createContainer({
       Image: 'imjching/slugr',
-      "Env": [
-        "PORT=5000",
+      Labels: {
+        'traefik.backend': req.params.app_name,
+        'traefik.docker.network': 'web',
+        'traefik.frontend.rule': `Host:${req.params.app_name}.ceroku.com`,
+        'traefik.enable': 'true'
+      },
+      Env: [
+        'PORT=5000',
       ],
       ExposedPorts: {
-        "5000/tcp": { }
+        '5000/tcp': { }
       },
       HostConfig: {
         Binds: [
           `${process.env.MAIN_PATH}/${req.params.app_name}/builds/${build_id}/slug.tgz:/tmp/slugs/slug.tgz`
         ],
         AutoRemove: true,
-        PublishAllPorts: true
+        // PublishAllPorts: true,
+        // RestartPolicy: {
+        //   Name: 'always'
+        // },
+        NetworkMode: 'web'
       },
       Cmd: ['/bin/bash', '-c', 'tar -xzf /tmp/slugs/slug.tgz && /start web']
     });
@@ -164,20 +174,33 @@ app.post('/apps/:app_name/builds', function(req, res, next) {
       console.log('\tERROR');
       return;
     }
-    console.log('\t' + JSON.stringify(Ports, null, 2));
     // Here, we should get router to route url to this new port,
     // then filter based on app name and release id,
     // and finally remove old containers
     // insert new version into database
     log_stream.write('       Released v6\n');
-    log_stream.write(`       http://localhost:${Ports['5000/tcp'][0].HostPort}/ deployed to Ceroku\n`);
+    log_stream.write(`       http://${req.params.app_name}.ceroku.com/ deployed to Ceroku\n`);
     log_stream.end();
     err_stream.end();
 
+    console.log('\tDONE');
+    // console.log('\t' + JSON.stringify(Ports, null, 2));
+    return docker.listContainers({
+      filters: JSON.stringify({
+        label: [`traefik.backend=${req.params.app_name}`],
+        before: [container.Id]
+      })
+    });
+  }).then(function(containers) {
     var tmp_stream = fs.createWriteStream(path.join(logs_dir, 'build.tmp'));
     tmp_stream.write(statusCode + '\n');
     tmp_stream.end();
-    console.log('\tDONE');
+
+    containers.forEach(function (containerInfo) {
+      docker.getContainer(containerInfo.Id).stop(function(err, result) {
+        // ignore
+      });
+    });
   }).catch(function(err) {
     console.log(err);
   });
